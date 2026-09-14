@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <title>Mahlzeit Planer & Einkaufsliste</title>
+  
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Mahlzeit Planer">
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Custom Styling for App Experience -->
+  <style>
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .active-scale:active { transform: scale(0.96); }
+    
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- Main App Container -->
+  <div id="app" class="flex-1 flex flex-col max-w-md mx-auto w-full bg-white shadow-xl relative overflow-hidden h-full">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white pt-safe px-5 pb-4 shadow-md z-10 flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight flex items-center gap-2">
+          <i data-lucide="utensils-crossed" class="w-6 h-6"></i>
+          <span>Mahlzeit Planer</span>
+        </h1>
+        <p class="text-xs text-emerald-100 font-medium mt-0.5 flex items-center gap-1.5">
+          <span id="sync-indicator" class="w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse"></span>
+          <span id="sync-status-text">Lokal (Nicht synchronisiert)</span>
+        </p>
+      </div>
+      <div class="flex items-center gap-1">
+        <button onclick="openSyncModal()" title="Haushalt teilen" class="p-2 text-emerald-100 hover:text-white rounded-full hover:bg-emerald-700/50 transition relative active-scale">
+          <i data-lucide="users" class="w-5 h-5"></i>
+        </button>
+        <button onclick="resetToDefaults()" title="Zurücksetzen" class="p-2 text-emerald-100 hover:text-white rounded-full hover:bg-emerald-700/50 transition active-scale">
+          <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area (Scrollable) -->
+    <main class="flex-1 overflow-y-auto no-scrollbar p-4 pb-28">
+
+      <!-- ================= TAB 1: WOCHENPLANER ================= -->
+      <section id="tab-planer" class="space-y-4">
+        <div class="flex items-center justify-between bg-emerald-50 p-3.5 rounded-2xl border border-emerald-100">
+          <div>
+            <h2 class="font-semibold text-emerald-900 text-sm">Mein Wochenplan</h2>
+            <p class="text-xs text-emerald-700">Abgestimmt auf Aufwand & Wochentag</p>
+          </div>
+          <button onclick="generateFullPlan()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl shadow-sm flex items-center gap-1.5 active-scale transition">
+            <i data-lucide="shuffle" class="w-4 h-4"></i>
+            <span>Plan neu würfeln</span>
+          </button>
+        </div>
+
+        <!-- Days List -->
+        <div id="weekly-plan-list" class="space-y-3">
+          <!-- Dynamically inserted by JS -->
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: GERICHTE-DATENBANK ================= -->
+      <section id="tab-gerichte" class="space-y-4 hidden">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-lg text-slate-800">Meine Gerichte (<span id="meal-count">0</span>)</h2>
+          <button onclick="openMealModal()" class="bg-emerald-600 text-white font-semibold text-xs px-3.5 py-2.5 rounded-xl shadow-sm flex items-center gap-1.5 active-scale transition">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Neues Gericht</span>
+          </button>
+        </div>
+
+        <!-- Filter Chips -->
+        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          <button onclick="filterMeals('all')" id="filter-all" class="meal-filter-btn px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-600 text-white">Alle</button>
+          <button onclick="filterMeals('weekday')" id="filter-weekday" class="meal-filter-btn px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Unter der Woche</button>
+          <button onclick="filterMeals('weekend')" id="filter-weekend" class="meal-filter-btn px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Wochenende</button>
+          <button onclick="filterMeals('both')" id="filter-both" class="meal-filter-btn px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Jederzeit</button>
+        </div>
+
+        <!-- Meals List -->
+        <div id="meals-list" class="space-y-2.5">
+          <!-- Dynamically inserted by JS -->
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: EINKAUFSLISTE ================= -->
+      <section id="tab-einkauf" class="space-y-4 hidden">
+        <!-- Add Item Form -->
+        <div class="bg-slate-100 p-2.5 rounded-2xl flex gap-2 items-center border border-slate-200 focus-within:border-emerald-500 focus-within:bg-white transition">
+          <input type="text" id="shopping-input" placeholder="Artikel hinzufügen..." class="flex-1 bg-transparent px-2 text-sm focus:outline-none" onkeypress="if(event.key==='Enter') addShoppingItemFromInput()">
+          <button onclick="addShoppingItemFromInput()" class="bg-emerald-600 text-white p-2 rounded-xl active-scale transition">
+            <i data-lucide="plus" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Quick Add / History Section -->
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Produkt-Gedächtnis (Schnellauswahl)</span>
+            <span class="text-[10px] text-slate-400">Tippen zum Hinzufügen</span>
+          </div>
+          <div id="quick-add-container" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 border border-dashed border-slate-200 rounded-xl">
+            <!-- Dynamically populated tags -->
+          </div>
+        </div>
+
+        <!-- Active Shopping List -->
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-slate-800 text-sm">Aktuelle Einkaufsliste</h3>
+            <button onclick="clearCheckedItems()" class="text-xs text-rose-600 hover:underline">Erledigte löschen</button>
+          </div>
+          <ul id="shopping-list" class="space-y-2">
+            <!-- Dynamically inserted -->
+          </ul>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar (iOS App Style) -->
+    <nav class="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 px-6 py-2 pb-safe flex justify-around items-center z-20">
+      <button onclick="switchTab('planer')" id="nav-planer" class="nav-btn flex flex-col items-center gap-1 text-emerald-600 transition">
+        <i data-lucide="calendar" class="w-5 h-5"></i>
+        <span class="text-[11px] font-medium">Wochenplan</span>
+      </button>
+      <button onclick="switchTab('gerichte')" id="nav-gerichte" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+        <span class="text-[11px] font-medium">Gerichte</span>
+      </button>
+      <button onclick="switchTab('einkauf')" id="nav-einkauf" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+        <span class="text-[11px] font-medium">Einkaufsliste</span>
+      </button>
+    </nav>
+
+    <!-- Modal: Household Sync Settings -->
+    <div id="sync-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+      <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl animate-in fade-in slide-in-from-bottom duration-200">
+        <div class="flex justify-between items-center border-b pb-3">
+          <h3 class="font-bold text-lg text-slate-800">Haushalt synchronisieren</h3>
+          <button onclick="closeSyncModal()" class="text-slate-400 hover:text-slate-600">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+
+        <p class="text-xs text-slate-600 leading-relaxed">
+          Gib denselben <strong>Haushalts-Code</strong> auf dem iPhone deiner Frau ein, um Gerichte, Wochenplan und Einkaufsliste in Echtzeit miteinander zu teilen.
+        </p>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">DEIN HAUSHALTS-CODE</label>
+          <div class="flex gap-2">
+            <input type="text" id="household-code-input" placeholder="z. B. FamilieMüller" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm uppercase tracking-wider font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white transition">
+            <button onclick="connectHousehold()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 rounded-xl shadow-sm active-scale transition">
+              Verbinden
+            </button>
+          </div>
+        </div>
+
+        <div id="sync-share-box" class="hidden p-3 bg-emerald-50 border border-emerald-100 rounded-xl space-y-1">
+          <div class="text-xs font-semibold text-emerald-900">Aktiv verbunden mit:</div>
+          <div id="current-household-name" class="text-sm font-bold text-emerald-700 font-mono"></div>
+          <button onclick="disconnectHousehold()" class="text-[11px] text-rose-600 font-medium hover:underline pt-1">Verbindung trennen</button>
+        </div>
+
+        <div class="pt-2">
+          <button type="button" onclick="closeSyncModal()" class="w-full py-3 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium text-sm transition">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add / Edit Meal with Gemini AI Ingredient Generation -->
+    <div id="meal-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+      <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col animate-in fade-in slide-in-from-bottom duration-200">
+        <div class="flex justify-between items-center border-b pb-3">
+          <h3 id="modal-title" class="font-bold text-lg text-slate-800">Neues Gericht hinzufügen</h3>
+          <button onclick="closeMealModal()" class="text-slate-400 hover:text-slate-600">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+
+        <form id="meal-form" onsubmit="handleMealSubmit(event)" class="space-y-4 overflow-y-auto pr-1 flex-1 no-scrollbar">
+          <input type="hidden" id="meal-id">
+          
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">NAME DES GERICHTS</label>
+            <div class="flex gap-2">
+              <input type="text" id="meal-name" required placeholder="z. B. Lasagne Al Forno" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500 focus:bg-white transition">
+              <button type="button" onclick="generateAiIngredients()" id="ai-gen-btn" class="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs px-3 rounded-xl shadow-sm flex items-center gap-1.5 active-scale transition shrink-0" title="Zutaten automatisch per KI finden">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span class="hidden sm:inline">KI Zutaten</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">EIGNUNG / AUFWAND</label>
+            <select id="meal-category" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500 focus:bg-white transition">
+              <option value="weekday">Unter der Woche (Schnell & Einfach)</option>
+              <option value="weekend">Wochenende (Mehr Aufwand)</option>
+              <option value="both">Beides (Flexibel)</option>
+            </select>
+          </div>
+
+          <!-- Interactive Ingredient Manager -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-semibold text-slate-600">ZUTATEN DES GERICHTS</label>
+              <span class="text-[10px] text-slate-400">Per KI generierbar oder manuell</span>
+            </div>
+
+            <!-- AI Loading State Banner -->
+            <div id="ai-loading" class="hidden p-3 mb-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-xs">
+              <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-600"></i>
+              <span>Gemini KI ermittelt typische Zutaten...</span>
+            </div>
+
+            <!-- Manually Add Ingredient Input -->
+            <div class="flex gap-2 mb-2">
+              <input type="text" id="manual-ingredient-input" placeholder="Zutat hinzufügen (z. B. 500g Hackfleisch)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:border-emerald-500 focus:bg-white transition" onkeypress="if(event.key==='Enter'){ event.preventDefault(); addIngredientFromInput(); }">
+              <button type="button" onclick="addIngredientFromInput()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold transition active-scale">
+                +
+              </button>
+            </div>
+
+            <!-- Tag Chips Container for Ingredients -->
+            <div id="ingredients-chip-list" class="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl min-h-[60px] max-h-40 overflow-y-auto">
+              <!-- Dynamically populated tags -->
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button type="button" onclick="closeMealModal()" class="flex-1 py-3 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium text-sm transition">Abbrechen</button>
+            <button type="submit" class="flex-1 py-3 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl font-semibold text-sm shadow-md active-scale transition">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Firebase Setup for Realtime Syncing -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'mahlzeit-planer-app';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : {
+          apiKey: "demo-key",
+          authDomain: "demo-app.firebaseapp.com",
+          projectId: "demo-app",
+          storageBucket: "demo-app.appspot.com",
+          messagingSenderId: "123456789",
+          appId: "1:123456789:web:demo"
+        };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window.db = db;
+    window.appId = appId;
+    window.firestoreDoc = doc;
+    window.firestoreSetDoc = setDoc;
+    window.firestoreOnSnapshot = onSnapshot;
+
+    async function initAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+        window.currentUser = auth.currentUser;
+        if (window.onAuthComplete) window.onAuthComplete();
+      } catch (err) {
+        console.warn("Auth initialization fallback:", err);
+      }
+    }
+
+    initAuth();
+  </script>
+
+  <script>
+    // Initial Default Data
+    const DEFAULT_MEALS = [
+      { id: '1', name: 'Spaghetti Bolognese', category: 'both', ingredients: ['400g Spaghetti', '500g Hackfleisch', '1 Dose Passierte Tomaten', '2 Knoblauchzehen', '1 Zwiebel'] },
+      { id: '2', name: 'Ofenlachs mit Reis & Brokkoli', category: 'weekday', ingredients: ['2 Lachsfilets', '200g Basmati Reis', '1 Kopf Brokkoli', '1 Zitrone'] },
+      { id: '3', name: 'Selbstgemachte Pizza', category: 'weekend', ingredients: ['500g Mehl', '1 Pck. Hefe', '200g Geriebener Käse', '1 Dose Tomatensoße', '100g Salami'] },
+      { id: '4', name: 'Gemüseeintopf mit Würstchen', category: 'weekday', ingredients: ['500g Kartoffeln', '3 Karotten', '1 L Gemüsebrühe', '1 Pck. Wiener Würstchen'] },
+      { id: '5', name: 'Rindergulasch mit Klößen', category: 'weekend', ingredients: ['800g Gulaschfleisch', '4 Zwiebeln', '250ml Rotwein', '1 Pck. Klöße'] }
+    ];
+
+    const DEFAULT_SHOPPING_HISTORY = [
+      'Milch', 'Eier', 'Brot', 'Butter', 'Käse', 'Äpfel', 'Bananen', 'Kaffee', 'Spaghetti', 'Passierte Tomaten'
+    ];
+
+    const DAYS_OF_WEEK = [
+      { name: 'Montag', key: 'Mo', isWeekend: false },
+      { name: 'Dienstag', key: 'Di', isWeekend: false },
+      { name: 'Mittwoch', key: 'Mi', isWeekend: false },
+      { name: 'Donnerstag', key: 'Do', isWeekend: false },
+      { name: 'Freitag', key: 'Fr', isWeekend: false },
+      { name: 'Samstag', key: 'Sa', isWeekend: true },
+      { name: 'Sonntag', key: 'So', isWeekend: true }
+    ];
+
+    // State Variables
+    let meals = [];
+    let weeklyPlan = {};
+    let shoppingList = [];
+    let shoppingHistory = [];
+    let currentFilter = 'all';
+    let modalIngredients = []; // Temporary array for active meal modal ingredients
+    let householdCode = localStorage.getItem('mp_household_code') || '';
+    let unsubscribeSync = null;
+
+    function initApp() {
+      meals = JSON.parse(localStorage.getItem('mp_meals')) || DEFAULT_MEALS;
+      shoppingList = JSON.parse(localStorage.getItem('mp_shopping_list')) || [];
+      shoppingHistory = JSON.parse(localStorage.getItem('mp_shopping_history')) || DEFAULT_SHOPPING_HISTORY;
+      weeklyPlan = JSON.parse(localStorage.getItem('mp_weekly_plan')) || {};
+
+      if (Object.keys(weeklyPlan).length === 0) {
+        generateFullPlan(false);
+      } else {
+        renderWeeklyPlan();
+      }
+
+      renderMeals();
+      renderShoppingList();
+      renderQuickAddTags();
+
+      if (householdCode) {
+        setupCloudSync(householdCode);
+      } else {
+        updateSyncUI(false);
+      }
+
+      lucide.createIcons();
+    }
+
+    window.onAuthComplete = function() {
+      if (householdCode) {
+        setupCloudSync(householdCode);
+      }
+    };
+
+    function saveData() {
+      localStorage.setItem('mp_meals', JSON.stringify(meals));
+      localStorage.setItem('mp_shopping_list', JSON.stringify(shoppingList));
+      localStorage.setItem('mp_shopping_history', JSON.stringify(shoppingHistory));
+      localStorage.setItem('mp_weekly_plan', JSON.stringify(weeklyPlan));
+
+      if (householdCode && window.db && window.firestoreSetDoc) {
+        try {
+          const docRef = window.firestoreDoc(window.db, 'artifacts', window.appId, 'public', 'data', 'households', householdCode.toLowerCase());
+          window.firestoreSetDoc(docRef, {
+            meals,
+            weeklyPlan,
+            shoppingList,
+            shoppingHistory,
+            lastUpdated: Date.now()
+          }, { merge: true });
+        } catch (e) {
+          console.error("Cloud Save Error:", e);
+        }
+      }
+    }
+
+    function setupCloudSync(code) {
+      if (!code || !window.db) return;
+
+      const cleanCode = code.trim().toLowerCase();
+      if (unsubscribeSync) unsubscribeSync();
+
+      try {
+        const docRef = window.firestoreDoc(window.db, 'artifacts', window.appId, 'public', 'data', 'households', cleanCode);
+        
+        unsubscribeSync = window.firestoreOnSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.meals) meals = data.meals;
+            if (data.weeklyPlan) weeklyPlan = data.weeklyPlan;
+            if (data.shoppingList) shoppingList = data.shoppingList;
+            if (data.shoppingHistory) shoppingHistory = data.shoppingHistory;
+
+            renderWeeklyPlan();
+            renderMeals();
+            renderShoppingList();
+            renderQuickAddTags();
+          } else {
+            saveData();
+          }
+        }, (err) => {
+          console.warn("Sync listener warning:", err);
+        });
+
+        updateSyncUI(true, cleanCode);
+      } catch (err) {
+        console.error("Sync Setup Error:", err);
+      }
+    }
+
+    // Modal Sync Controls
+    function openSyncModal() {
+      const modal = document.getElementById('sync-modal');
+      const input = document.getElementById('household-code-input');
+      const shareBox = document.getElementById('sync-share-box');
+      const currentName = document.getElementById('current-household-name');
+
+      input.value = householdCode;
+      if (householdCode) {
+        shareBox.classList.remove('hidden');
+        currentName.innerText = householdCode.toUpperCase();
+      } else {
+        shareBox.classList.add('hidden');
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeSyncModal() {
+      document.getElementById('sync-modal').classList.add('hidden');
+    }
+
+    function connectHousehold() {
+      const input = document.getElementById('household-code-input');
+      const code = input.value.trim().toLowerCase();
+      if (!code) return;
+
+      householdCode = code;
+      localStorage.setItem('mp_household_code', householdCode);
+      setupCloudSync(householdCode);
+      closeSyncModal();
+    }
+
+    function disconnectHousehold() {
+      if (unsubscribeSync) unsubscribeSync();
+      householdCode = '';
+      localStorage.removeItem('mp_household_code');
+      updateSyncUI(false);
+      closeSyncModal();
+    }
+
+    function updateSyncUI(isConnected, code = '') {
+      const indicator = document.getElementById('sync-indicator');
+      const statusText = document.getElementById('sync-status-text');
+
+      if (isConnected) {
+        indicator.className = "w-2 h-2 rounded-full bg-emerald-300 inline-block";
+        statusText.innerText = `Geteilt (${code.toUpperCase()})`;
+      } else {
+        indicator.className = "w-2 h-2 rounded-full bg-amber-400 inline-block";
+        statusText.innerText = "Lokal (Nicht synchronisiert)";
+      }
+    }
+
+    function resetToDefaults() {
+      if (confirm('Möchtest du wirklich alle Daten zurücksetzen?')) {
+        localStorage.clear();
+        initApp();
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('main > section').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('text-emerald-600');
+        btn.classList.add('text-slate-400');
+      });
+
+      const activeBtn = document.getElementById(`nav-${tabId}`);
+      activeBtn.classList.remove('text-slate-400');
+      activeBtn.classList.add('text-emerald-600');
+    }
+
+    // Weekly Planner Logic
+    function getRandomMealForDay(isWeekend) {
+      if (meals.length === 0) return null;
+
+      let suitableMeals = meals.filter(meal => {
+        return isWeekend ? (meal.category === 'weekend' || meal.category === 'both')
+                         : (meal.category === 'weekday' || meal.category === 'both');
+      });
+
+      if (suitableMeals.length === 0) suitableMeals = meals;
+
+      const randomIndex = Math.floor(Math.random() * suitableMeals.length);
+      return suitableMeals[randomIndex];
+    }
+
+    function generateFullPlan(save = true) {
+      DAYS_OF_WEEK.forEach(day => {
+        const meal = getRandomMealForDay(day.isWeekend);
+        weeklyPlan[day.key] = meal ? meal.id : null;
+      });
+      if (save) saveData();
+      renderWeeklyPlan();
+    }
+
+    function rerollDay(dayKey, isWeekend) {
+      const meal = getRandomMealForDay(isWeekend);
+      weeklyPlan[dayKey] = meal ? meal.id : null;
+      saveData();
+      renderWeeklyPlan();
+    }
+
+    function renderWeeklyPlan() {
+      const container = document.getElementById('weekly-plan-list');
+      container.innerHTML = '';
+
+      DAYS_OF_WEEK.forEach(day => {
+        const mealId = weeklyPlan[day.key];
+        const meal = meals.find(m => m.id === mealId);
+
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3";
+        
+        const categoryBadge = meal ? (
+          meal.category === 'weekday' ? '<span class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-medium">Unter der Woche</span>' :
+          meal.category === 'weekend' ? '<span class="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-md font-medium">Wochenende</span>' :
+          '<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">Jederzeit</span>'
+        ) : '';
+
+        const hasIngredients = meal && Array.isArray(meal.ingredients) && meal.ingredients.length > 0;
+
+        card.innerHTML = `
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-bold text-xs uppercase tracking-wide ${day.isWeekend ? 'text-amber-600' : 'text-slate-400'}">${day.name}</span>
+              ${categoryBadge}
+            </div>
+            <h3 class="font-semibold text-slate-800 text-base truncate">${meal ? meal.name : '<span class="text-slate-400 italic">Kein Gericht ausgewählt</span>'}</h3>
+            ${hasIngredients ? `
+              <button onclick="addIngredientsToShoppingList('${meal.id}')" class="mt-2 text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1 active-scale">
+                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Zutaten auf Einkaufszettel (${meal.ingredients.length})
+              </button>
+            ` : ''}
+          </div>
+          <button onclick="rerollDay('${day.key}', ${day.isWeekend})" title="Tauschen" class="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl active-scale transition border border-slate-100">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        `;
+
+        container.appendChild(card);
+      });
+
+      lucide.createIcons();
+    }
+
+    // Meals Database & Category Filters
+    function filterMeals(category) {
+      currentFilter = category;
+      document.querySelectorAll('.meal-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white');
+        btn.classList.add('bg-slate-100', 'text-slate-600');
+      });
+      document.getElementById(`filter-${category}`).classList.remove('bg-slate-100', 'text-slate-600');
+      document.getElementById(`filter-${category}`).classList.add('bg-emerald-600', 'text-white');
+      
+      renderMeals();
+    }
+
+    function renderMeals() {
+      const container = document.getElementById('meals-list');
+      container.innerHTML = '';
+
+      let filteredMeals = meals;
+      if (currentFilter !== 'all') {
+        filteredMeals = meals.filter(m => m.category === currentFilter);
+      }
+
+      document.getElementById('meal-count').innerText = meals.length;
+
+      if (filteredMeals.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">Keine Gerichte in dieser Kategorie vorhanden.</div>`;
+        return;
+      }
+
+      filteredMeals.forEach(meal => {
+        const card = document.createElement('div');
+        card.className = "bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center gap-3";
+        
+        let catLabel = 'Jederzeit';
+        let catClass = 'bg-slate-100 text-slate-600';
+        if (meal.category === 'weekday') { catLabel = 'Unter der Woche'; catClass = 'bg-blue-50 text-blue-600'; }
+        if (meal.category === 'weekend') { catLabel = 'Wochenende'; catClass = 'bg-purple-50 text-purple-600'; }
+
+        const ingList = Array.isArray(meal.ingredients) ? meal.ingredients.join(', ') : '';
+
+        card.innerHTML = `
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <h4 class="font-semibold text-slate-800 text-sm truncate">${meal.name}</h4>
+              <span class="text-[10px] px-2 py-0.5 rounded-md font-medium ${catClass}">${catLabel}</span>
+            </div>
+            ${ingList ? `<p class="text-xs text-slate-400 truncate">${ingList}</p>` : '<p class="text-xs text-slate-300 italic">Keine Zutaten hinterlegt</p>'}
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="openMealModal('${meal.id}')" class="p-2 text-slate-400 hover:text-slate-600 rounded-lg">
+              <i data-lucide="edit-2" class="w-4 h-4"></i>
+            </button>
+            <button onclick="deleteMeal('${meal.id}')" class="p-2 text-rose-400 hover:text-rose-600 rounded-lg">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      lucide.createIcons();
+    }
+
+    // GEMINI AI INTEGRATION: Automatically generate ingredient list
+    async function generateAiIngredients() {
+      const mealName = document.getElementById('meal-name').value.trim();
+      if (!mealName) {
+        alert('Bitte gib zuerst den Namen des Gerichts ein.');
+        return;
+      }
+
+      const loadingBanner = document.getElementById('ai-loading');
+      const aiBtn = document.getElementById('ai-gen-btn');
+      
+      loadingBanner.classList.remove('hidden');
+      aiBtn.disabled = true;
+
+      const systemPrompt = "Du bist ein präziser Koch-Assistent. Erstelle eine Zutatenliste für 2-4 Personen auf Deutsch für das folgende Gericht. Antworte NUR im strukturierten JSON-Format mit einer Liste von Strings. Beispiel: [\"500g Pasta\", \"1 Dose Tomaten\"]";
+      const userQuery = `Gericht: ${mealName}`;
+
+      try {
+        const apiKey = ""; // Canvas runtime provides standard key
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const payload = {
+          contents: [{ parts: [{ text: userQuery }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            }
+          }
+        };
+
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (candidateText) {
+          const parsed = JSON.parse(candidateText);
+          if (Array.isArray(parsed)) {
+            // Append AI generated ingredients and filter duplicates
+            parsed.forEach(item => {
+              if (item && !modalIngredients.includes(item.trim())) {
+                modalIngredients.push(item.trim());
+              }
+            });
+            renderIngredientChips();
+          }
+        }
+      } catch (err) {
+        console.error("Gemini AI Fetch Error:", err);
+        alert("Konnte Zutaten nicht automatisch laden. Bitte manuell eingeben.");
+      } finally {
+        loadingBanner.classList.add('hidden');
+        aiBtn.disabled = false;
+      }
+    }
+
+    // Modal Ingredient List Editing Functions
+    function addIngredientFromInput() {
+      const input = document.getElementById('manual-ingredient-input');
+      const val = input.value.trim();
+      if (val) {
+        modalIngredients.push(val);
+        input.value = '';
+        renderIngredientChips();
+      }
+    }
+
+    function removeIngredientChip(index) {
+      modalIngredients.splice(index, 1);
+      renderIngredientChips();
+    }
+
+    function renderIngredientChips() {
+      const container = document.getElementById('ingredients-chip-list');
+      container.innerHTML = '';
+
+      if (modalIngredients.length === 0) {
+        container.innerHTML = `<span class="text-xs text-slate-400 italic p-1">Noch keine Zutaten hinzugefügt.</span>`;
+        return;
+      }
+
+      modalIngredients.forEach((ing, idx) => {
+        const chip = document.createElement('div');
+        chip.className = "bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-emerald-200 animate-in fade-in duration-150";
+        chip.innerHTML = `
+          <span>${ing}</span>
+          <button type="button" onclick="removeIngredientChip(${idx})" class="text-emerald-600 hover:text-rose-600 font-bold ml-1">
+            &times;
+          </button>
+        `;
+        container.appendChild(chip);
+      });
+    }
+
+    function openMealModal(mealId = null) {
+      const modal = document.getElementById('meal-modal');
+      const form = document.getElementById('meal-form');
+      
+      if (mealId) {
+        const meal = meals.find(m => m.id === mealId);
+        document.getElementById('modal-title').innerText = 'Gericht bearbeiten';
+        document.getElementById('meal-id').value = meal.id;
+        document.getElementById('meal-name').value = meal.name;
+        document.getElementById('meal-category').value = meal.category;
+        modalIngredients = Array.isArray(meal.ingredients) ? [...meal.ingredients] : [];
+      } else {
+        document.getElementById('modal-title').innerText = 'Neues Gericht hinzufügen';
+        form.reset();
+        document.getElementById('meal-id').value = '';
+        modalIngredients = [];
+      }
+
+      renderIngredientChips();
+      modal.classList.remove('hidden');
+    }
+
+    function closeMealModal() {
+      document.getElementById('meal-modal').classList.add('hidden');
+    }
+
+    function handleMealSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('meal-id').value;
+      const name = document.getElementById('meal-name').value.trim();
+      const category = document.getElementById('meal-category').value;
+
+      if (!name) return;
+
+      if (id) {
+        const index = meals.findIndex(m => m.id === id);
+        if (index !== -1) {
+          meals[index] = { id, name, category, ingredients: [...modalIngredients] };
+        }
+      } else {
+        const newMeal = {
+          id: Date.now().toString(),
+          name,
+          category,
+          ingredients: [...modalIngredients]
+        };
+        meals.push(newMeal);
+      }
+
+      saveData();
+      renderMeals();
+      renderWeeklyPlan();
+      closeMealModal();
+    }
+
+    function deleteMeal(id) {
+      if (confirm('Gericht wirklich löschen?')) {
+        meals = meals.filter(m => m.id !== id);
+        saveData();
+        renderMeals();
+        renderWeeklyPlan();
+      }
+    }
+
+    // Shopping List Management
+    function addShoppingItem(name) {
+      const cleanName = name.trim();
+      if (!cleanName) return;
+
+      if (!shoppingList.some(item => item.name.toLowerCase() === cleanName.toLowerCase())) {
+        shoppingList.push({ id: Date.now().toString() + Math.random(), name: cleanName, checked: false });
+      }
+
+      if (!shoppingHistory.some(h => h.toLowerCase() === cleanName.toLowerCase())) {
+        shoppingHistory.unshift(cleanName);
+      }
+
+      saveData();
+      renderShoppingList();
+      renderQuickAddTags();
+    }
+
+    function addShoppingItemFromInput() {
+      const input = document.getElementById('shopping-input');
+      addShoppingItem(input.value);
+      input.value = '';
+    }
+
+    function addIngredientsToShoppingList(mealId) {
+      const meal = meals.find(m => m.id === mealId);
+      if (!meal || !Array.isArray(meal.ingredients)) return;
+
+      meal.ingredients.forEach(item => addShoppingItem(item));
+      switchTab('einkauf');
+    }
+
+    function toggleShoppingItem(id) {
+      const item = shoppingList.find(i => i.id === id);
+      if (item) {
+        item.checked = !item.checked;
+        saveData();
+        renderShoppingList();
+      }
+    }
+
+    function removeShoppingItem(id) {
+      shoppingList = shoppingList.filter(i => i.id !== id);
+      saveData();
+      renderShoppingList();
+    }
+
+    function clearCheckedItems() {
+      shoppingList = shoppingList.filter(i => !i.checked);
+      saveData();
+      renderShoppingList();
+    }
+
+    function renderShoppingList() {
+      const container = document.getElementById('shopping-list');
+      container.innerHTML = '';
+
+      if (shoppingList.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">Deine Einkaufsliste ist leer.</div>`;
+        return;
+      }
+
+      shoppingList.forEach(item => {
+        const li = document.createElement('li');
+        li.className = `p-3 rounded-xl border flex items-center justify-between gap-3 transition ${
+          item.checked ? 'bg-slate-50 border-slate-100 text-slate-400' : 'bg-white border-slate-100 text-slate-800'
+        }`;
+
+        li.innerHTML = `
+          <div class="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onclick="toggleShoppingItem('${item.id}')">
+            <div class="w-5 h-5 rounded-md border flex items-center justify-center transition ${
+              item.checked ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
+            }">
+              ${item.checked ? '<i data-lucide="check" class="w-3.5 h-3.5"></i>' : ''}
+            </div>
+            <span class="text-sm font-medium ${item.checked ? 'line-through' : ''}">${item.name}</span>
+          </div>
+          <button onclick="removeShoppingItem('${item.id}')" class="text-slate-300 hover:text-rose-500 transition p-1">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        `;
+
+        container.appendChild(li);
+      });
+
+      lucide.createIcons();
+    }
+
+    function renderQuickAddTags() {
+      const container = document.getElementById('quick-add-container');
+      container.innerHTML = '';
+
+      shoppingHistory.slice(0, 15).forEach(itemName => {
+        const isAlreadyAdded = shoppingList.some(i => i.name.toLowerCase() === itemName.toLowerCase());
+        
+        const btn = document.createElement('button');
+        btn.onclick = () => addShoppingItem(itemName);
+        btn.disabled = isAlreadyAdded;
+        btn.className = `text-xs px-2.5 py-1 rounded-lg border transition flex items-center gap-1 ${
+          isAlreadyAdded 
+            ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed' 
+            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-500 active-scale'
+        }`;
+        
+        btn.innerHTML = `
+          <span>${itemName}</span>
+          ${isAlreadyAdded ? '<i data-lucide="check" class="w-3 h-3 text-slate-400"></i>' : '<i data-lucide="plus" class="w-3 h-3 text-emerald-600"></i>'}
+        `;
+
+        container.appendChild(btn);
+      });
+
+      lucide.createIcons();
+    }
+
+    // App Startup
+    window.onload = initApp;
+  </script>
+</body>
+</html>
